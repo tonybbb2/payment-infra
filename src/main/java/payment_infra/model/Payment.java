@@ -1,14 +1,21 @@
 package payment_infra.model;
 
 import jakarta.persistence.*;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name = "payments", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_payment_idempotency_key", columnNames = "idempotency_key")
-})
+@Table(
+        name = "payments",
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_payment_idempotency_key",
+                        columnNames = "idempotency_key"
+                )
+        }
+)
 public class Payment {
 
     @Id
@@ -27,11 +34,11 @@ public class Payment {
     @Column(name = "idempotency_key", nullable = false)
     private String idempotencyKey;
 
-    @Column(nullable = false)
-    private Instant createdAt;
-
     @Column(name = "processor_transaction_id")
     private String processorTransactionId;
+
+    @Column(nullable = false)
+    private Instant createdAt;
 
     protected Payment() {
     }
@@ -69,15 +76,16 @@ public class Payment {
         return idempotencyKey;
     }
 
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
-
     public String getProcessorTransactionId() {
         return processorTransactionId;
     }
 
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
     public void authorize(String processorTransactionId) {
+
         if (this.status != PaymentStatus.CREATED) {
             throw new IllegalStateException(
                     "Only CREATED payments can be authorized"
@@ -89,28 +97,63 @@ public class Payment {
     }
 
     public void capture() {
+
         if (this.status != PaymentStatus.AUTHORIZED) {
             throw new IllegalStateException(
-                    "Only AUTHORIZED payments can be captured");
+                    "Only AUTHORIZED payments can be captured"
+            );
         }
 
         this.status = PaymentStatus.CAPTURED;
     }
 
     public void refund() {
+
         if (this.status != PaymentStatus.CAPTURED) {
             throw new IllegalStateException(
-                    "Only CAPTURED payments can be refunded");
+                    "Only CAPTURED payments can be refunded"
+            );
         }
 
         this.status = PaymentStatus.REFUNDED;
     }
 
     public void fail() {
+
         if (this.status == PaymentStatus.CAPTURED
                 || this.status == PaymentStatus.REFUNDED) {
+
             throw new IllegalStateException(
-                    "Completed payments cannot be marked as failed");
+                    "Completed payments cannot be marked as failed"
+            );
+        }
+
+        this.status = PaymentStatus.FAILED;
+    }
+
+    public void markUnknown(String processorTransactionId) {
+
+        this.processorTransactionId = processorTransactionId;
+        this.status = PaymentStatus.UNKNOWN;
+    }
+
+    public void reconcileAuthorized() {
+
+        if (this.status != PaymentStatus.UNKNOWN) {
+            throw new IllegalStateException(
+                    "Only UNKNOWN payments can be reconciled"
+            );
+        }
+
+        this.status = PaymentStatus.AUTHORIZED;
+    }
+
+    public void reconcileFailed() {
+
+        if (this.status != PaymentStatus.UNKNOWN) {
+            throw new IllegalStateException(
+                    "Only UNKNOWN payments can be reconciled"
+            );
         }
 
         this.status = PaymentStatus.FAILED;

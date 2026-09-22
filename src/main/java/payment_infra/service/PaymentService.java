@@ -2,14 +2,16 @@ package payment_infra.service;
 
 import payment_infra.dto.CreatePaymentRequest;
 import payment_infra.model.Payment;
+import payment_infra.model.PaymentStatus;
 import payment_infra.processor.PaymentProcessor;
+import payment_infra.processor.ProcessorResult;
+import payment_infra.processor.ProcessorStatus;
+import payment_infra.processor.ProcessorTimeoutException;
 import payment_infra.repository.PaymentRepository;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
@@ -55,7 +57,6 @@ public class PaymentService {
                         )
                 );
 
-        // Same idempotency key should represent the same operation
         if (payment.getAmount().compareTo(request.amount()) != 0
                 || !payment.getCurrency().equals(currency)) {
 
@@ -83,16 +84,32 @@ public class PaymentService {
                         new RuntimeException("Payment not found")
                 );
 
-        String processorTransactionId =
-                paymentProcessor.authorize(
-                        payment.getId(),
-                        payment.getAmount(),
-                        payment.getCurrency()
-                );
+        try {
 
-        payment.authorize(processorTransactionId);
+            ProcessorResult result =
+                    paymentProcessor.authorize(
+                            payment.getId(),
+                            payment.getAmount(),
+                            payment.getCurrency()
+                    );
 
-        return paymentRepository.save(payment);
+            if (!result.success()) {
+                payment.fail();
+                return paymentRepository.save(payment);
+            }
+
+            payment.authorize(result.transactionId());
+
+            return paymentRepository.save(payment);
+
+        } catch (ProcessorTimeoutException exception) {
+
+            payment.markUnknown(
+                    exception.getTransactionId()
+            );
+
+            return paymentRepository.save(payment);
+        }
     }
 
     @Transactional
@@ -103,9 +120,15 @@ public class PaymentService {
                         new RuntimeException("Payment not found")
                 );
 
-        paymentProcessor.capture(
-                payment.getProcessorTransactionId()
-        );
+        ProcessorResult result =
+                paymentProcessor.capture(
+                        payment.getProcessorTransactionId()
+                );
+
+        if (!result.success()) {
+            payment.fail();
+            return paymentRepository.save(payment);
+        }
 
         payment.capture();
 
@@ -120,11 +143,52 @@ public class PaymentService {
                         new RuntimeException("Payment not found")
                 );
 
-        paymentProcessor.refund(
-                payment.getProcessorTransactionId()
-        );
+        ProcessorResult result =
+                paymentProcessor.refund(
+                        payment.getProcessorTransactionId()
+                );
+
+        if (!result.success()) {
+            throw new IllegalStateException(
+                    result.message()
+            );
+        }
 
         payment.refund();
+
+        return paymentRepository.save(payment);
+    }
+
+    @Transactional
+    public Payment reconcilePayment(UUID id) {
+
+        Payment payment = paymentRepository.findById(id)
+                .orElseThrow(() ->
+                        new RuntimeException("Payment not found")
+                );
+
+        if (payment.getStatus() != PaymentStatus.UNKNOWN) {
+            return payment;
+        }
+
+        ProcessorStatus processorStatus =
+                paymentProcessor.getStatus(
+                        payment.getProcessorTransactionId()
+                );
+
+        switch (processorStatus) {
+
+            case AUTHORIZED ->
+                    payment.reconcileAuthorized();
+
+            case FAILED, NOT_FOUND ->
+                    payment.reconcileFailed();
+
+            default ->
+                    throw new IllegalStateException(
+                            "Unexpected processor state during reconciliation"
+                    );
+        }
 
         return paymentRepository.save(payment);
     }

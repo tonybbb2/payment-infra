@@ -52,4 +52,9 @@ public class PaymentController {
     public Payment refund(@PathVariable UUID id) {
         return paymentService.refundPayment(id);
     }
+
+    @PostMapping("/{id}/reconcile")
+    public Payment reconcile(@PathVariable UUID id) {
+        return paymentService.reconcilePayment(id);
+    }
 }
