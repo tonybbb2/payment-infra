@@ -24,12 +24,8 @@ public class PaymentController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Payment createPayment(
-            @RequestHeader("Idempotency-Key")
-            String idempotencyKey,
-
-            @Valid
-            @RequestBody
-            CreatePaymentRequest request) {
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @Valid @RequestBody CreatePaymentRequest request) {
 
         return paymentService.createPayment(
                 request,
@@ -40,5 +36,20 @@ public class PaymentController {
     @GetMapping("/{id}")
     public Payment getPayment(@PathVariable UUID id) {
         return paymentService.getPayment(id);
+    }
+
+    @PostMapping("/{id}/authorize")
+    public Payment authorize(@PathVariable UUID id) {
+        return paymentService.authorizePayment(id);
+    }
+
+    @PostMapping("/{id}/capture")
+    public Payment capture(@PathVariable UUID id) {
+        return paymentService.capturePayment(id);
+    }
+
+    @PostMapping("/{id}/refund")
+    public Payment refund(@PathVariable UUID id) {
+        return paymentService.refundPayment(id);
     }
 }

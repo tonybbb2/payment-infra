@@ -6,15 +6,9 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(
-    name = "payments",
-    uniqueConstraints = {
-        @UniqueConstraint(
-            name = "uk_payment_idempotency_key",
-            columnNames = "idempotency_key"
-        )
-    }
-)
+@Table(name = "payments", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_payment_idempotency_key", columnNames = "idempotency_key")
+})
 public class Payment {
 
     @Id
@@ -35,6 +29,9 @@ public class Payment {
 
     @Column(nullable = false)
     private Instant createdAt;
+
+    @Column(name = "processor_transaction_id")
+    private String processorTransactionId;
 
     protected Payment() {
     }
@@ -76,7 +73,46 @@ public class Payment {
         return createdAt;
     }
 
-    public void setStatus(PaymentStatus status) {
-        this.status = status;
+    public String getProcessorTransactionId() {
+        return processorTransactionId;
+    }
+
+    public void authorize(String processorTransactionId) {
+        if (this.status != PaymentStatus.CREATED) {
+            throw new IllegalStateException(
+                    "Only CREATED payments can be authorized"
+            );
+        }
+
+        this.processorTransactionId = processorTransactionId;
+        this.status = PaymentStatus.AUTHORIZED;
+    }
+
+    public void capture() {
+        if (this.status != PaymentStatus.AUTHORIZED) {
+            throw new IllegalStateException(
+                    "Only AUTHORIZED payments can be captured");
+        }
+
+        this.status = PaymentStatus.CAPTURED;
+    }
+
+    public void refund() {
+        if (this.status != PaymentStatus.CAPTURED) {
+            throw new IllegalStateException(
+                    "Only CAPTURED payments can be refunded");
+        }
+
+        this.status = PaymentStatus.REFUNDED;
+    }
+
+    public void fail() {
+        if (this.status == PaymentStatus.CAPTURED
+                || this.status == PaymentStatus.REFUNDED) {
+            throw new IllegalStateException(
+                    "Completed payments cannot be marked as failed");
+        }
+
+        this.status = PaymentStatus.FAILED;
     }
 }
