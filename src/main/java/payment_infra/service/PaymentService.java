@@ -17,17 +17,27 @@ public class PaymentService {
         this.paymentRepository = paymentRepository;
     }
 
-    public Payment createPayment(CreatePaymentRequest request) {
-        Payment payment = new Payment(
-                request.amount(),
-                request.currency().toUpperCase()
-        );
+    public Payment createPayment(
+            CreatePaymentRequest request,
+            String idempotencyKey) {
 
-        return paymentRepository.save(payment);
+        return paymentRepository
+                .findByIdempotencyKey(idempotencyKey)
+                .orElseGet(() -> {
+                    Payment payment = new Payment(
+                            request.amount(),
+                            request.currency().toUpperCase(),
+                            idempotencyKey
+                    );
+
+                    return paymentRepository.save(payment);
+                });
     }
 
     public Payment getPayment(UUID id) {
         return paymentRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Payment not found"));
+                .orElseThrow(
+                    () -> new RuntimeException("Payment not found")
+                );
     }
 }

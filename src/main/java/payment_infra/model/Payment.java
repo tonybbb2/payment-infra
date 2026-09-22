@@ -6,7 +6,15 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name = "payments")
+@Table(
+    name = "payments",
+    uniqueConstraints = {
+        @UniqueConstraint(
+            name = "uk_payment_idempotency_key",
+            columnNames = "idempotency_key"
+        )
+    }
+)
 public class Payment {
 
     @Id
@@ -22,16 +30,24 @@ public class Payment {
     @Column(nullable = false)
     private PaymentStatus status;
 
+    @Column(name = "idempotency_key", nullable = false)
+    private String idempotencyKey;
+
     @Column(nullable = false)
     private Instant createdAt;
 
     protected Payment() {
     }
 
-    public Payment(BigDecimal amount, String currency) {
+    public Payment(
+            BigDecimal amount,
+            String currency,
+            String idempotencyKey) {
+
         this.id = UUID.randomUUID();
         this.amount = amount;
         this.currency = currency;
+        this.idempotencyKey = idempotencyKey;
         this.status = PaymentStatus.CREATED;
         this.createdAt = Instant.now();
     }
@@ -50,6 +66,10 @@ public class Payment {
 
     public PaymentStatus getStatus() {
         return status;
+    }
+
+    public String getIdempotencyKey() {
+        return idempotencyKey;
     }
 
     public Instant getCreatedAt() {
