@@ -4,8 +4,12 @@ import payment_infra.dto.CreatePaymentRequest;
 import payment_infra.model.Payment;
 import payment_infra.repository.PaymentRepository;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Service
@@ -17,27 +21,49 @@ public class PaymentService {
         this.paymentRepository = paymentRepository;
     }
 
+    @Transactional
     public Payment createPayment(
             CreatePaymentRequest request,
             String idempotencyKey) {
 
-        return paymentRepository
-                .findByIdempotencyKey(idempotencyKey)
-                .orElseGet(() -> {
-                    Payment payment = new Payment(
-                            request.amount(),
-                            request.currency().toUpperCase(),
-                            idempotencyKey
-                    );
+        String currency = request.currency().toUpperCase();
 
-                    return paymentRepository.save(payment);
-                });
+        UUID newPaymentId = UUID.randomUUID();
+
+        paymentRepository.insertIfAbsent(
+                newPaymentId,
+                request.amount(),
+                currency,
+                "CREATED",
+                idempotencyKey,
+                Instant.now()
+        );
+
+        Payment payment = paymentRepository
+                .findByIdempotencyKey(idempotencyKey)
+                .orElseThrow(() ->
+                        new IllegalStateException(
+                                "Payment was not created or found"
+                        )
+                );
+
+        // Same idempotency key should represent the same operation
+        if (payment.getAmount().compareTo(request.amount()) != 0
+                || !payment.getCurrency().equals(currency)) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Idempotency key was already used with a different payment request"
+            );
+        }
+
+        return payment;
     }
 
     public Payment getPayment(UUID id) {
         return paymentRepository.findById(id)
-                .orElseThrow(
-                    () -> new RuntimeException("Payment not found")
+                .orElseThrow(() ->
+                        new RuntimeException("Payment not found")
                 );
     }
 }
