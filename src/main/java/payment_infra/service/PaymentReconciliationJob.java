@@ -1,5 +1,6 @@
 package payment_infra.service;
 
+import payment_infra.metrics.PaymentMetrics;
 import payment_infra.model.Payment;
 import payment_infra.model.PaymentStatus;
 import payment_infra.repository.PaymentRepository;
@@ -14,16 +15,21 @@ public class PaymentReconciliationJob {
 
     private final PaymentRepository paymentRepository;
     private final PaymentService paymentService;
+    private final PaymentMetrics paymentMetrics;
 
     public PaymentReconciliationJob(
             PaymentRepository paymentRepository,
-            PaymentService paymentService) {
+            PaymentService paymentService,
+            PaymentMetrics paymentMetrics) {
 
         this.paymentRepository =
                 paymentRepository;
 
         this.paymentService =
                 paymentService;
+
+        this.paymentMetrics =
+                paymentMetrics;
     }
 
     @Scheduled(fixedDelay = 10000)
@@ -46,12 +52,16 @@ public class PaymentReconciliationJob {
 
         for (Payment payment : unknownPayments) {
 
+            paymentMetrics.reconciliationAttempt();
+
             try {
 
                 Payment reconciled =
                         paymentService.reconcilePayment(
                                 payment.getId()
                         );
+
+                paymentMetrics.reconciliationSuccess();
 
                 System.out.println(
                         "Reconciled payment:"
@@ -60,6 +70,8 @@ public class PaymentReconciliationJob {
                 );
 
             } catch (Exception exception) {
+
+                paymentMetrics.reconciliationFailure();
 
                 System.out.println(
                         "Failed to reconcile payment:"

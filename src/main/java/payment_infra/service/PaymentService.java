@@ -2,6 +2,7 @@ package payment_infra.service;
 
 import payment_infra.dto.CreatePaymentRequest;
 import payment_infra.ledger.LedgerService;
+import payment_infra.metrics.PaymentMetrics;
 import payment_infra.model.Payment;
 import payment_infra.model.PaymentStatus;
 import payment_infra.outbox.OutboxEventType;
@@ -27,12 +28,14 @@ public class PaymentService {
     private final PaymentProcessor paymentProcessor;
     private final LedgerService ledgerService;
     private final OutboxService outboxService;
+    private final PaymentMetrics paymentMetrics;
 
     public PaymentService(
             PaymentRepository paymentRepository,
             PaymentProcessor paymentProcessor,
             LedgerService ledgerService,
-            OutboxService outboxService) {
+            OutboxService outboxService,
+            PaymentMetrics paymentMetrics) {
 
         this.paymentRepository =
                 paymentRepository;
@@ -45,6 +48,9 @@ public class PaymentService {
 
         this.outboxService =
                 outboxService;
+
+        this.paymentMetrics =
+                paymentMetrics;
     }
 
     @Transactional
@@ -52,70 +58,85 @@ public class PaymentService {
             CreatePaymentRequest request,
             String idempotencyKey) {
 
-        String currency =
-                request.currency().toUpperCase();
-
-        UUID newPaymentId =
-                UUID.randomUUID();
-
-        paymentRepository.insertIfAbsent(
-                newPaymentId,
-                request.amount(),
-                currency,
-                "CREATED",
-                idempotencyKey,
-                Instant.now()
-        );
-
-        Payment payment =
+        Payment existingPayment =
                 paymentRepository
                         .findByIdempotencyKey(
                                 idempotencyKey
                         )
-                        .orElseThrow(() ->
-                                new IllegalStateException(
-                                        "Payment was not created or found"
-                                )
-                        );
+                        .orElse(null);
 
-        if (payment.getAmount()
-                        .compareTo(
-                                request.amount()
-                        ) != 0
-                || !payment.getCurrency()
-                        .equals(currency)) {
+        if (existingPayment != null) {
 
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "Idempotency key was already used with a different payment request"
+            validateIdempotentRequest(
+                    existingPayment,
+                    request
             );
+
+            return existingPayment;
         }
 
-        return payment;
+        UUID paymentId =
+                UUID.randomUUID();
+
+        Instant createdAt =
+                Instant.now();
+
+        int inserted =
+                paymentRepository.insertIfAbsent(
+                        paymentId,
+                        request.amount(),
+                        request.currency(),
+                        PaymentStatus.CREATED.name(),
+                        idempotencyKey,
+                        createdAt
+                );
+
+        if (inserted == 1) {
+
+            Payment createdPayment =
+                    paymentRepository
+                            .findById(paymentId)
+                            .orElseThrow();
+
+            paymentMetrics.paymentCreated();
+
+            return createdPayment;
+        }
+
+        Payment concurrentPayment =
+                paymentRepository
+                        .findByIdempotencyKey(
+                                idempotencyKey
+                        )
+                        .orElseThrow();
+
+        validateIdempotentRequest(
+                concurrentPayment,
+                request
+        );
+
+        return concurrentPayment;
     }
 
-    public Payment getPayment(UUID id) {
+    public Payment getPayment(
+            UUID paymentId) {
 
         return paymentRepository
-                .findById(id)
+                .findById(paymentId)
                 .orElseThrow(() ->
-                        new RuntimeException(
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
                                 "Payment not found"
                         )
                 );
     }
 
     @Transactional
-    public Payment authorizePayment(UUID id) {
+    public Payment authorizePayment(
+            UUID paymentId) {
 
         Payment payment =
-                paymentRepository
-                        .findById(id)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Payment not found"
-                                )
-                        );
+                getPayment(paymentId);
 
         try {
 
@@ -130,32 +151,36 @@ public class PaymentService {
 
                 payment.fail();
 
-                paymentRepository.save(
-                        payment
-                );
+                Payment saved =
+                        paymentRepository.save(
+                                payment
+                        );
 
                 outboxService.recordPaymentEvent(
-                        payment,
+                        saved,
                         OutboxEventType.PAYMENT_FAILED
                 );
 
-                return payment;
+                return saved;
             }
 
             payment.authorize(
                     result.transactionId()
             );
 
-            paymentRepository.save(
-                    payment
-            );
+            Payment saved =
+                    paymentRepository.save(
+                            payment
+                    );
 
             outboxService.recordPaymentEvent(
-                    payment,
+                    saved,
                     OutboxEventType.PAYMENT_AUTHORIZED
             );
 
-            return payment;
+            paymentMetrics.paymentAuthorized();
+
+            return saved;
 
         } catch (ProcessorTimeoutException exception) {
 
@@ -163,23 +188,23 @@ public class PaymentService {
                     exception.getTransactionId()
             );
 
-            return paymentRepository.save(
-                    payment
-            );
+            Payment saved =
+                    paymentRepository.save(
+                            payment
+                    );
+
+            paymentMetrics.paymentUnknown();
+
+            return saved;
         }
     }
 
     @Transactional
-    public Payment capturePayment(UUID id) {
+    public Payment capturePayment(
+            UUID paymentId) {
 
         Payment payment =
-                paymentRepository
-                        .findById(id)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Payment not found"
-                                )
-                        );
+                getPayment(paymentId);
 
         ProcessorResult result =
                 paymentProcessor.capture(
@@ -190,16 +215,17 @@ public class PaymentService {
 
             payment.fail();
 
-            paymentRepository.save(
-                    payment
-            );
+            Payment saved =
+                    paymentRepository.save(
+                            payment
+                    );
 
             outboxService.recordPaymentEvent(
-                    payment,
+                    saved,
                     OutboxEventType.PAYMENT_FAILED
             );
 
-            return payment;
+            return saved;
         }
 
         payment.capture();
@@ -209,29 +235,27 @@ public class PaymentService {
                 payment.getAmount()
         );
 
-        paymentRepository.save(
-                payment
-        );
+        Payment saved =
+                paymentRepository.save(
+                        payment
+                );
 
         outboxService.recordPaymentEvent(
-                payment,
+                saved,
                 OutboxEventType.PAYMENT_CAPTURED
         );
 
-        return payment;
+        paymentMetrics.paymentCaptured();
+
+        return saved;
     }
 
     @Transactional
-    public Payment refundPayment(UUID id) {
+    public Payment refundPayment(
+            UUID paymentId) {
 
         Payment payment =
-                paymentRepository
-                        .findById(id)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Payment not found"
-                                )
-                        );
+                getPayment(paymentId);
 
         ProcessorResult result =
                 paymentProcessor.refund(
@@ -241,7 +265,8 @@ public class PaymentService {
         if (!result.success()) {
 
             throw new IllegalStateException(
-                    result.message()
+                    "Processor refund failed: "
+                            + result.message()
             );
         }
 
@@ -252,34 +277,34 @@ public class PaymentService {
                 payment.getAmount()
         );
 
-        paymentRepository.save(
-                payment
-        );
+        Payment saved =
+                paymentRepository.save(
+                        payment
+                );
 
         outboxService.recordPaymentEvent(
-                payment,
+                saved,
                 OutboxEventType.PAYMENT_REFUNDED
         );
 
-        return payment;
+        paymentMetrics.paymentRefunded();
+
+        return saved;
     }
 
     @Transactional
-    public Payment reconcilePayment(UUID id) {
+    public Payment reconcilePayment(
+            UUID paymentId) {
 
         Payment payment =
-                paymentRepository
-                        .findById(id)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Payment not found"
-                                )
-                        );
+                getPayment(paymentId);
 
         if (payment.getStatus()
                 != PaymentStatus.UNKNOWN) {
 
-            return payment;
+            throw new IllegalStateException(
+                    "Only UNKNOWN payments can be reconciled"
+            );
         }
 
         ProcessorStatus processorStatus =
@@ -289,27 +314,62 @@ public class PaymentService {
 
         switch (processorStatus) {
 
-            case AUTHORIZED ->
-                    payment.reconcileAuthorized();
+            case AUTHORIZED -> {
 
-            case FAILED, NOT_FOUND ->
-                    payment.reconcileFailed();
+                payment.reconcileAuthorized();
+            }
 
-            default ->
-                    throw new IllegalStateException(
-                            "Unexpected processor state during reconciliation"
-                    );
+            case FAILED, NOT_FOUND -> {
+
+                payment.reconcileFailed();
+            }
+
+            default -> {
+
+                throw new IllegalStateException(
+                        "Unexpected processor status during reconciliation: "
+                                + processorStatus
+                );
+            }
         }
 
-        paymentRepository.save(
-                payment
-        );
+        Payment saved =
+                paymentRepository.save(
+                        payment
+                );
 
         outboxService.recordPaymentEvent(
-                payment,
+                saved,
                 OutboxEventType.PAYMENT_RECONCILED
         );
 
-        return payment;
+        return saved;
+    }
+
+    private void validateIdempotentRequest(
+            Payment existingPayment,
+            CreatePaymentRequest request) {
+
+        boolean sameAmount =
+                existingPayment
+                        .getAmount()
+                        .compareTo(
+                                request.amount()
+                        ) == 0;
+
+        boolean sameCurrency =
+                existingPayment
+                        .getCurrency()
+                        .equals(
+                                request.currency()
+                        );
+
+        if (!sameAmount || !sameCurrency) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Idempotency key already used with a different request"
+            );
+        }
     }
 }
