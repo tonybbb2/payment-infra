@@ -1,6 +1,7 @@
 package payment_infra.service;
 
 import payment_infra.dto.CreatePaymentRequest;
+import payment_infra.ledger.LedgerService;
 import payment_infra.model.Payment;
 import payment_infra.model.PaymentStatus;
 import payment_infra.processor.PaymentProcessor;
@@ -22,13 +23,16 @@ public class PaymentService {
 
     private final PaymentRepository paymentRepository;
     private final PaymentProcessor paymentProcessor;
+    private final LedgerService ledgerService;
 
     public PaymentService(
             PaymentRepository paymentRepository,
-            PaymentProcessor paymentProcessor) {
+            PaymentProcessor paymentProcessor,
+            LedgerService ledgerService) {
 
         this.paymentRepository = paymentRepository;
         this.paymentProcessor = paymentProcessor;
+        this.ledgerService = ledgerService;
     }
 
     @Transactional
@@ -70,9 +74,12 @@ public class PaymentService {
     }
 
     public Payment getPayment(UUID id) {
+
         return paymentRepository.findById(id)
                 .orElseThrow(() ->
-                        new RuntimeException("Payment not found")
+                        new RuntimeException(
+                                "Payment not found"
+                        )
                 );
     }
 
@@ -81,7 +88,9 @@ public class PaymentService {
 
         Payment payment = paymentRepository.findById(id)
                 .orElseThrow(() ->
-                        new RuntimeException("Payment not found")
+                        new RuntimeException(
+                                "Payment not found"
+                        )
                 );
 
         try {
@@ -94,13 +103,21 @@ public class PaymentService {
                     );
 
             if (!result.success()) {
+
                 payment.fail();
-                return paymentRepository.save(payment);
+
+                return paymentRepository.save(
+                        payment
+                );
             }
 
-            payment.authorize(result.transactionId());
+            payment.authorize(
+                    result.transactionId()
+            );
 
-            return paymentRepository.save(payment);
+            return paymentRepository.save(
+                    payment
+            );
 
         } catch (ProcessorTimeoutException exception) {
 
@@ -108,7 +125,9 @@ public class PaymentService {
                     exception.getTransactionId()
             );
 
-            return paymentRepository.save(payment);
+            return paymentRepository.save(
+                    payment
+            );
         }
     }
 
@@ -117,7 +136,9 @@ public class PaymentService {
 
         Payment payment = paymentRepository.findById(id)
                 .orElseThrow(() ->
-                        new RuntimeException("Payment not found")
+                        new RuntimeException(
+                                "Payment not found"
+                        )
                 );
 
         ProcessorResult result =
@@ -126,13 +147,24 @@ public class PaymentService {
                 );
 
         if (!result.success()) {
+
             payment.fail();
-            return paymentRepository.save(payment);
+
+            return paymentRepository.save(
+                    payment
+            );
         }
 
         payment.capture();
 
-        return paymentRepository.save(payment);
+        ledgerService.postCapture(
+                payment.getId(),
+                payment.getAmount()
+        );
+
+        return paymentRepository.save(
+                payment
+        );
     }
 
     @Transactional
@@ -140,7 +172,9 @@ public class PaymentService {
 
         Payment payment = paymentRepository.findById(id)
                 .orElseThrow(() ->
-                        new RuntimeException("Payment not found")
+                        new RuntimeException(
+                                "Payment not found"
+                        )
                 );
 
         ProcessorResult result =
@@ -149,6 +183,7 @@ public class PaymentService {
                 );
 
         if (!result.success()) {
+
             throw new IllegalStateException(
                     result.message()
             );
@@ -156,7 +191,14 @@ public class PaymentService {
 
         payment.refund();
 
-        return paymentRepository.save(payment);
+        ledgerService.postRefund(
+                payment.getId(),
+                payment.getAmount()
+        );
+
+        return paymentRepository.save(
+                payment
+        );
     }
 
     @Transactional
@@ -164,7 +206,9 @@ public class PaymentService {
 
         Payment payment = paymentRepository.findById(id)
                 .orElseThrow(() ->
-                        new RuntimeException("Payment not found")
+                        new RuntimeException(
+                                "Payment not found"
+                        )
                 );
 
         if (payment.getStatus() != PaymentStatus.UNKNOWN) {
@@ -190,6 +234,8 @@ public class PaymentService {
                     );
         }
 
-        return paymentRepository.save(payment);
+        return paymentRepository.save(
+                payment
+        );
     }
 }
