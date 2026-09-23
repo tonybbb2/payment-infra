@@ -3,10 +3,12 @@ package payment_infra.controller;
 import payment_infra.kafka.ConsumerMode;
 import payment_infra.kafka.PaymentEventConsumer;
 
+import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/kafka-consumer")
+@Profile("dev")
 public class KafkaConsumerTestController {
 
     private final PaymentEventConsumer paymentEventConsumer;

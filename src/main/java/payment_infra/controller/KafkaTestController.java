@@ -4,12 +4,14 @@ import payment_infra.kafka.KafkaEventPublisher;
 import payment_infra.outbox.OutboxEvent;
 import payment_infra.outbox.OutboxEventRepository;
 
+import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/kafka-test")
+@Profile("dev")
 public class KafkaTestController {
 
     private final OutboxEventRepository outboxEventRepository;
