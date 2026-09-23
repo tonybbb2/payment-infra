@@ -15,6 +15,9 @@ public class PaymentEventConsumer {
     private final ProcessedEventRepository processedEventRepository;
     private final ObjectMapper objectMapper;
 
+    private ConsumerMode mode =
+            ConsumerMode.SUCCESS;
+
     public PaymentEventConsumer(
             ProcessedEventRepository processedEventRepository) {
 
@@ -23,6 +26,11 @@ public class PaymentEventConsumer {
 
         this.objectMapper =
                 new ObjectMapper();
+    }
+
+    public void setMode(ConsumerMode mode) {
+
+        this.mode = mode;
     }
 
     @KafkaListener(
@@ -61,6 +69,18 @@ public class PaymentEventConsumer {
             );
 
             return;
+        }
+
+        if (mode == ConsumerMode.FAILURE) {
+
+            System.out.println(
+                    "Simulated consumer failure:"
+                            + " eventId=" + eventId
+            );
+
+            throw new RuntimeException(
+                    "Simulated Kafka consumer failure"
+            );
         }
 
         System.out.println(
