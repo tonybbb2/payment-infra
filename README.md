@@ -563,6 +563,14 @@ The API runs by default on:
 http://localhost:8081
 ```
 
+### Desktop lab console
+
+For a small Swing window to create, authorize, capture, refund, replay, and reconcile payments, see [the lab console guide](tools/README.md). Keep the backend running in a terminal, then launch the console in another:
+
+```powershell
+.\tools\start-lab.ps1
+```
+
 ### Run tests
 
 ```bash
