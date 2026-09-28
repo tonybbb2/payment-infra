@@ -35,6 +35,7 @@ public class PaymentLab {
     private HttpRequest lastCreate;
     private boolean busy;
 
+    // Starts the console on Swing's UI thread and applies the vintage theme.
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
             try { UIManager.setLookAndFeel("javax.swing.plaf.metal.MetalLookAndFeel"); }
@@ -43,6 +44,7 @@ public class PaymentLab {
         });
     }
 
+    // Builds the window, connects buttons to actions, and starts the optional polling timer.
     private PaymentLab() {
         window.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         JPanel panel = new JPanel();
@@ -119,12 +121,14 @@ public class PaymentLab {
         append("Ready. Create -> Authorize -> Capture -> Refund. Choose TIMEOUT before Authorize to explore reconciliation.");
     }
 
+    // Groups the supplied labels, fields, or buttons into a left-aligned row.
     private JPanel row(Component... items) {
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT));
         for (Component item : items) row.add(item);
         return row;
     }
 
+    // Creates a button that runs an action and displays any resulting error in the log.
     private JButton button(String title, Runnable action) {
         JButton button = new JButton(title);
         controls.add(button);
@@ -135,11 +139,13 @@ public class PaymentLab {
         return button;
     }
 
+    // Reads the Payment ID field and rejects values that are not valid UUIDs.
     private String selectedId() {
         try { return UUID.fromString(paymentId.getText().trim()).toString(); }
         catch (IllegalArgumentException ex) { throw new IllegalArgumentException("Enter a valid payment UUID."); }
     }
 
+    // Validates the payment fields, saves the creation request for replay, and sends it.
     private void create() {
         BigDecimal value;
         try { value = new BigDecimal(amount.getText().trim()); }
@@ -152,10 +158,12 @@ public class PaymentLab {
         send(lastCreate);
     }
 
+    // Looks up the selected payment or sends an action such as authorize, capture, or reconcile.
     private void paymentAction(String suffix) {
         send(request(suffix.isEmpty() ? "GET" : "POST", "/payments/" + selectedId() + suffix, null, null));
     }
 
+    // Builds an HTTP request with its URL, headers, optional body, and timeout without sending it.
     private HttpRequest request(String method, String path, String body, String idempotencyKey) {
         URI root = URI.create(base.getText().trim());
         if (!("http".equals(root.getScheme()) || "https".equals(root.getScheme())) || root.getHost() == null
@@ -169,6 +177,7 @@ public class PaymentLab {
         return builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body)).build();
     }
 
+    // Locks the controls and starts a background HTTP call so the window stays responsive.
     private void send(HttpRequest request) {
         setBusy(true);
         append("REQUEST: " + request.method() + " " + request.uri()
@@ -176,10 +185,12 @@ public class PaymentLab {
         long start = System.nanoTime();
         // Only network work runs off the event dispatch thread. All UI updates happen in done().
         new SwingWorker<HttpResponse<String>, Void>() {
+            // Sends the request and waits for its response on a worker thread.
             protected HttpResponse<String> doInBackground() throws Exception {
                 return client.send(request, HttpResponse.BodyHandlers.ofString());
             }
 
+            // Displays the response or transport error on the UI thread, then unlocks the controls.
             protected void done() {
                 try {
                     HttpResponse<String> response = get();
@@ -213,11 +224,13 @@ public class PaymentLab {
         }.execute();
     }
 
+    // Disables controls and skips polling while a request is running, then enables them afterward.
     private void setBusy(boolean value) {
         busy = value;
         controls.forEach(control -> control.setEnabled(!value));
     }
 
+    // Adds a timestamped log message, trims old text, and scrolls to the latest entry.
     private void append(String message) {
         log.append(LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")) + "  " + message + "\n");
         if (log.getDocument().getLength() > 100_000) log.replaceRange("", 0, log.getDocument().getLength() - 80_000);
