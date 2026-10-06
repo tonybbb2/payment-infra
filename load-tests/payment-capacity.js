@@ -57,6 +57,7 @@ export const options = {
     },
 };
 
+// Requests SUCCESS mode from the fake processor before the capacity test begins.
 export function setup() {
 
     const response = http.post(
@@ -76,6 +77,7 @@ export function setup() {
     });
 }
 
+// Creates and authorizes a payment, captures roughly 30% of payments, and records workflow success.
 export default function () {
 
     const idempotencyKey =

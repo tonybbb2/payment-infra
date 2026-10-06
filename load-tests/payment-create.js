@@ -19,6 +19,7 @@ export const options = {
     },
 };
 
+// Creates one payment with a fresh idempotency key and checks the HTTP response status.
 export default function () {
 
     const idempotencyKey =

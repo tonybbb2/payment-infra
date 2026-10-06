@@ -37,6 +37,7 @@ export const options = {
     },
 };
 
+// Requests SUCCESS mode from the fake processor before the mixed payment workload begins.
 export function setup() {
 
     const response = http.post(
@@ -56,6 +57,7 @@ export function setup() {
     });
 }
 
+// Runs one payment workflow with occasional creation retries, captures, and refunds, recording success.
 export default function () {
 
     const random = Math.random();

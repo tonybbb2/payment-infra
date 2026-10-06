@@ -39,6 +39,7 @@ export const options = {
     },
 };
 
+// Creates one payment per iteration while k6 ramps the number of active virtual users up and down.
 export default function () {
 
     const idempotencyKey =

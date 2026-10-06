@@ -16,6 +16,7 @@ export const options = {
     },
 };
 
+// Creates one payment before the test and shares its key and ID with every virtual user.
 export function setup() {
 
     const idempotencyKey =
@@ -57,6 +58,7 @@ export function setup() {
     };
 }
 
+// Repeats creation with the shared key and checks that the original payment ID is returned.
 export default function (data) {
 
     const payload = JSON.stringify({

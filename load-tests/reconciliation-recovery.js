@@ -58,6 +58,7 @@ export const options = {
     },
 };
 
+// Requests TIMEOUT mode so authorizations simulate a lost response after the processor succeeds.
 export function setup() {
 
     const response = http.post(
@@ -77,6 +78,7 @@ export function setup() {
     });
 }
 
+// Creates an UNKNOWN payment and polls for up to 30 seconds to measure scheduled reconciliation recovery.
 export default function () {
 
     const idempotencyKey =
@@ -263,6 +265,7 @@ export default function () {
     );
 }
 
+// Requests SUCCESS mode again after the test so later authorizations can proceed normally.
 export function teardown() {
 
     http.post(
