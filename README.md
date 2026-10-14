@@ -2,6 +2,8 @@
 
 # Fault-Tolerant Payment Infrastructure
 
+This is a personal learning project for practicing backend reliability and distributed systems concepts through hands-on implementation, failure simulation, and load testing.
+
 A payment-processing backend built with Java and Spring Boot that explores the reliability problems behind real payment systems: idempotency, distributed failures, double-entry accounting, event delivery, reconciliation, and failure recovery.
 
 The project intentionally simulates external processor failures and ambiguous network timeouts to demonstrate how payment state can remain correct even when distributed systems disagree.
