@@ -230,6 +230,9 @@ This provides durable event delivery without requiring a distributed transaction
 
 ## Kafka Delivery
 
+For a focused explanation of Kafka's role, the transactional outbox flow,
+duplicate handling, retries, and local testing, see [KAFKA.md](KAFKA.md).
+
 Payment events are published to:
 
 ```text
