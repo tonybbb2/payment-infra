@@ -10,6 +10,8 @@ The project intentionally simulates external processor failures and ambiguous ne
 
 ## Highlights
 
+The first inventory concurrency milestone is also available: see [the inventory lab](tools/inventory-lab.md) for the design, manual locking experiments, and concurrent HTTP test.
+
 - Concurrency-safe payment creation using idempotency keys
 - Explicit payment state machine
 - Simulated external payment processor
