@@ -12,6 +12,8 @@ The project intentionally simulates external processor failures and ambiguous ne
 
 The first inventory concurrency milestone is also available: see [the inventory lab](tools/inventory-lab.md) for the design, manual locking experiments, and concurrent HTTP test.
 
+The [reservation lab](tools/reservation-lab.md) builds on it with atomic reservation creation and stock deduction, plus idempotent retries. Cancellation, expiration, and payment integration are future milestones.
+
 - Concurrency-safe payment creation using idempotency keys
 - Explicit payment state machine
 - Simulated external payment processor
